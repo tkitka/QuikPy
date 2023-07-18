@@ -3,7 +3,7 @@ from threading import current_thread, Thread  # Результат работы 
 from json import loads  # Принимать данные в QUIK будем через JSON
 from json.decoder import JSONDecodeError  # Ошибка декодирования JSON
 
-
+socket_lock = threading.Lock()
 # class Singleton(type):
 #     """Метакласс для создания Singleton классов"""
 #     def __init__(cls, *args, **kwargs):
@@ -112,19 +112,20 @@ class QuikPy:
 
     def process_request(self, request):
         """Отправляем запрос в QUIK, получаем ответ из QUIK"""
-        # Issue 13. В QUIK некорректно отображаются русские буквы UTF8
-        raw_data = f'{request}\r\n'.replace("'", '"').encode('cp1251')  # Переводим в кодировку Windows 1251
-        self.socket_requests.sendall(raw_data)  # Отправляем запрос в QUIK
-        fragments = []  # Гораздо быстрее получать ответ в виде списка фрагментов
-        while True:  # Пока фрагменты есть в буфере
-            fragment = self.socket_requests.recv(self.buffer_size)  # Читаем фрагмент из буфера
-            fragments.append(fragment.decode('cp1251'))  # Переводим фрагмент в Windows кодировку 1251, добавляем в список
-            if len(fragment) < self.buffer_size:  # Если в принятом фрагменте данных меньше чем размер буфера
-                data = ''.join(fragments)  # Собираем список фрагментов в строку
-                try:  # Бывает ситуация, когда данных приходит меньше, но это еще не конец данных
-                    return loads(data)  # Попробуем вернуть ответ в формате JSON в Windows кодировке 1251
-                except JSONDecodeError:  # Если это еще не конец данных
-                    pass  # то ждем фрагментов в буфере дальше
+        with socket_lock:
+            # Issue 13. В QUIK некорректно отображаются русские буквы UTF8
+            raw_data = f'{request}\r\n'.replace("'", '"').encode('cp1251')  # Переводим в кодировку Windows 1251
+            self.socket_requests.sendall(raw_data)  # Отправляем запрос в QUIK
+            fragments = []  # Гораздо быстрее получать ответ в виде списка фрагментов
+            while True:  # Пока фрагменты есть в буфере
+                fragment = self.socket_requests.recv(self.buffer_size)  # Читаем фрагмент из буфера
+                fragments.append(fragment.decode('cp1251'))  # Переводим фрагмент в Windows кодировку 1251, добавляем в список
+                if len(fragment) < self.buffer_size:  # Если в принятом фрагменте данных меньше чем размер буфера
+                    data = ''.join(fragments)  # Собираем список фрагментов в строку
+                    try:  # Бывает ситуация, когда данных приходит меньше, но это еще не конец данных
+                        return loads(data)  # Попробуем вернуть ответ в формате JSON в Windows кодировке 1251
+                    except JSONDecodeError:  # Если это еще не конец данных
+                        pass  # то ждем фрагментов в буфере дальше
 
     # Инициализация и вход
 
